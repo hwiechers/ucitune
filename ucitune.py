@@ -98,7 +98,7 @@ def play_match(code, value):
     pattern = ('Score of target vs base: ' + 
                '(?P<win>\d+) - (?P<loss>\d+) - (?P<draw>\d+)')
     groups = [m.groupdict() for m in re.finditer(pattern, stdout)][-1]
-    score = int(groups['win']) - int(groups['loss'])
+    score = (int(groups['win']) + 0.5 * int(groups['draw'])) / 2
 
     print('{0:+}'.format(score))
 
@@ -172,7 +172,7 @@ def loadstate():
     with open(rel(STATE_FILENAME), 'r') as f:
         nodemap = {}
 
-        pattern = '^(?P<nodename>(\\.|[01]+)): (?P<score>-?\d+)/(?P<visits>\d+)$'
+        pattern = r'^(?P<nodename>(\.|[01]+)): (?P<score>\d+(\.\d+)?)/(?P<visits>\d+)$'
         for line in f:
             line = line.strip()
             if not line:
@@ -185,7 +185,7 @@ def loadstate():
             groups = m.groupdict()
 
             nodename = groups['nodename']
-            score = int(groups['score'])
+            score = float(groups['score'])
             visits = int(groups['visits'])
 
             if nodename == '.':
