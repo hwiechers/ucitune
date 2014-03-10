@@ -57,6 +57,8 @@ def handleSIGINT(signum, frame):
 signal.signal(signal.SIGINT, handleSIGINT)
 
 def play_match(code, value):
+    exitIfStopped()
+
     if not exists(rel(MATCHLOG_DIR)):
         os.mkdir(rel(MATCHLOG_DIR))
 
@@ -190,7 +192,7 @@ def loadstate():
 
             if nodename == '.':
                 root = Node(None, 0, score=score, visits=visits)
-                matchnum = visits + 1
+                matchnum = visits
                 nodemap['.'] = root
                 continue
 
@@ -361,7 +363,6 @@ def main(workdir_, numbits, numiters):
 
     for _ in range(numiters):
         matchnum += 1
-        exitIfStopped()
 
         node = root
 
