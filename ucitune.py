@@ -22,15 +22,6 @@ MATCHLOG_DIR = '_ucitune_matchlogs'
 
 CUTECHESS_CMD = 'C:/Users/Henri2/_Home/Utils/cutechess-cli/cutechess-cli.exe'
 
-CUTECHESS_ARGS = ('-repeat -rounds 2 -tournament gauntlet -pgnout {3} ' + 
-                  '-resign movecount=3 score=400 ' + 
-                  '-draw movenumber=34 movecount=8 score=20 ' +
-                  '-concurrency 1 ' + 
-                  '-openings file=8moves_v3.pgn format=pgn order=random plies=16 ' + 
-                  '-engine name=target cmd={0} option.Hash=128 option.OwnBook=false ' +
-                  '"option.Tune Target={2}" '
-                  '-engine name=base cmd={1} option.Hash=128 option.OwnBook=false ' +
-                  '-each proto=uci option.Threads=1 tc=10+0.15')
 import signal, os
 
 stop = False
@@ -38,6 +29,7 @@ stop = False
 workdir = None
 targetname = None
 basename = None
+concurrency = None
 
 root = None
 matchnum = 0
@@ -58,6 +50,16 @@ def handleSIGINT(signum, frame):
 
 signal.signal(signal.SIGINT, handleSIGINT)
 
+cutechess_args = ('-repeat -rounds {3} -tournament gauntlet -pgnout {5} ' + 
+                  '-resign movecount=3 score=400 ' + 
+                  '-draw movenumber=34 movecount=8 score=20 ' +
+                  '-concurrency {2} ' + 
+                  '-openings file=8moves_v3.pgn format=pgn order=random plies=16 ' + 
+                  '-engine name=target cmd={0} option.Hash=128 option.OwnBook=false ' +
+                  '"option.Tune Target={4}" '
+                  '-engine name=base cmd={1} option.Hash=128 option.OwnBook=false ' +
+                  '-each proto=uci option.Threads=1 tc=10+0.15')
+
 def play_match(code, value):
     exitIfStopped()
 
@@ -67,9 +69,12 @@ def play_match(code, value):
     print('{}: {} {} '.format(matchnum, code, value), end='')
     sys.stdout.flush()
 
+    games = 2 * concurrency
     pgnpath = rel(join(MATCHLOG_DIR, '{}.pgn'.format(matchnum)))
     cmd = (CUTECHESS_CMD + ' ' + 
-           CUTECHESS_ARGS.format(rel(targetname), rel(basename), value, pgnpath))
+           cutechess_args.format(
+               rel(targetname), rel(basename), concurrency, games,
+               value, pgnpath))
 
     p = subprocess.Popen(args = cmd, stderr = subprocess.PIPE, stdout = subprocess.PIPE)
     stdout, stderr = p.communicate(timeout=60*60)
@@ -102,7 +107,7 @@ def play_match(code, value):
     pattern = ('Score of target vs base: ' + 
                '(?P<win>\d+) - (?P<loss>\d+) - (?P<draw>\d+)')
     groups = [m.groupdict() for m in re.finditer(pattern, stdout)][-1]
-    score = (int(groups['win']) + 0.5 * int(groups['draw'])) / 2
+    score = (int(groups['win']) + 0.5 * int(groups['draw'])) / games
 
     print('{0:+}'.format(score))
 
@@ -162,8 +167,9 @@ def loadargs():
         basehash = f.readline().strip()
         numbits = int(f.readline().strip())
         numiters = int(f.readline().strip())
+        concurrency = int(f.readline().strip())
 
-    return targethash, basehash, numbits, numiters
+    return targethash, basehash, numbits, numiters, concurrency
 
 def loadstate():
     global root
@@ -302,9 +308,10 @@ def print_tree(root):
             print('right: ' + node.right.name)
             queue.append(node.right)
 
-#tuneargs is (tunebits, tuneiterations) or None for resuming
+#tuneargs is (bits, iterations, concurrency) or None for resuming
 def main(workdir_, tuneargs):
     global workdir
+    global concurrency
     global targetname
     global basename
     global root
@@ -313,6 +320,7 @@ def main(workdir_, tuneargs):
     workdir = workdir_
     numbits = tuneargs[0] if tuneargs else None 
     numiters = tuneargs[1] if tuneargs else None
+    concurrency = tuneargs[2] if tuneargs else None
 
     if not exists(workdir):
         print('<workdir> does not exist')
@@ -345,7 +353,7 @@ def main(workdir_, tuneargs):
                   "to continue tuning.") 
             return 1
 
-        saved_targethash, saved_basehash, numbits, numiters = loadargs()
+        saved_targethash, saved_basehash, numbits, numiters, concurrency = loadargs()
         if targethash != saved_targethash:
             print("Saved target hash doesn't match current one")
             return 1
@@ -366,6 +374,7 @@ def main(workdir_, tuneargs):
             print(basehash, file=f)
             print(numbits, file=f)
             print(numiters, file=f)
+            print(concurrency, file=f)
 
         root = Node(None, 0)
 
@@ -390,9 +399,8 @@ usage = (
 """ucitune
 
 Usage:
-  ucitune.py new <workdir> <bits> <iterations>
+  ucitune.py new <workdir> <bits> <iterations> [<concurrency>]
   ucitune.py resume <workdir>
-
 """)
 
 if __name__ == '__main__':
@@ -400,20 +408,29 @@ if __name__ == '__main__':
 
     new = arguments['new']
     workdir = arguments['<workdir>']
+
     bits = None
     iterations=None
+    concurrency = arguments.get('<concurrency>', '1')
     if new:
         bits = arguments['<bits>']
-        if not re.match('^\d+$', bits) or not int(bits):
+        if not re.match('^\d+$', bits) or int(bits) <= 0:
             print('<bits> must be a positive integer')
+            exit(1)
         bits = int(bits)
 
         iterations = arguments['<iterations>']
-        if not re.match('^\d+$', iterations) or not int(iterations):
+        if not re.match('^\d+$', iterations) or int(iterations) <= 0:
             print('<iterations> must be a positive integer')
+            exit(1)
         iterations = int(iterations)
 
-    exitcode = main(workdir, (bits, iterations) if new else None)
+        if not re.match('^\d+$', concurrency) or int(concurrency) <= 0:
+            print('<concurrency> must be a positive integer')
+            exit(1)
+        concurrency = int(concurrency)
+
+    exitcode = main(workdir, (bits, iterations, concurrency) if new else None)
     exit(exitcode)
 
 #2. Save and load to file at end of run and every 10 matches
