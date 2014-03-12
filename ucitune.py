@@ -14,6 +14,8 @@ import sys
 
 from os.path import exists, isdir, join
 
+from docopt import docopt
+
 ARGS_FILENAME  = '_ucitune_args.txt'
 STATE_FILENAME = '_ucitune_state.txt'
 MATCHLOG_DIR = '_ucitune_matchlogs'
@@ -300,7 +302,8 @@ def print_tree(root):
             print('right: ' + node.right.name)
             queue.append(node.right)
 
-def main(workdir_, numbits, numiters):
+#tuneargs is (tunebits, tuneiterations) or None for resuming
+def main(workdir_, tuneargs):
     global workdir
     global targetname
     global basename
@@ -308,13 +311,15 @@ def main(workdir_, numbits, numiters):
     global matchnum
 
     workdir = workdir_
+    numbits = tuneargs[0] if tuneargs else None 
+    numiters = tuneargs[1] if tuneargs else None
 
     if not exists(workdir):
-        print('WORKDIR does not exist')
+        print('<workdir> does not exist')
         return 1
 
     if not isdir(workdir):
-        print('WORKDIR is not a directory')
+        print('<workdir> is not a directory')
         return 1
     
     targetname = findexe('target')
@@ -332,10 +337,12 @@ def main(workdir_, numbits, numiters):
     basehash = filehash(rel(basename))
     root = None
 
+
     # Check if there is a args file 
     if exists(rel(ARGS_FILENAME)):
-        if numbits:
-            print("Search already started on workdir. Don't specify NUMBITS to resume.") 
+        if tuneargs:
+            print("Search already started on workdir. Use the resume command " 
+                  "to continue tuning.") 
             return 1
 
         saved_targethash, saved_basehash, numbits, numiters = loadargs()
@@ -349,8 +356,9 @@ def main(workdir_, numbits, numiters):
 
         loadstate()
     else:
-        if not numbits:
-            print("Search hasn't started on workdir. Please specify NUMBITS and NUMITERS")
+        if not tuneargs:
+            print("Search hasn't started on workdir. Use the new command to "
+                  "start tuning")
             return 1
 
         with open(rel(ARGS_FILENAME), 'w') as f:
@@ -378,30 +386,34 @@ def main(workdir_, numbits, numiters):
 
     print_tree(root)
 
+usage = (
+"""ucitune
+
+Usage:
+  ucitune.py new <workdir> <bits> <iterations>
+  ucitune.py resume <workdir>
+
+""")
+
 if __name__ == '__main__':
-    workdir = sys.argv[1] if len(sys.argv) > 1 else None
+    arguments = docopt(usage)
 
-    numbits = None
-    if len(sys.argv) > 2:
-        numbits = sys.argv[2]
-        if not re.match('^\d+$', numbits) or not int(numbits):
-            print('NUMBITS must be a positive integer')
-        numbits = int(numbits)
+    new = arguments['new']
+    workdir = arguments['<workdir>']
+    bits = None
+    iterations=None
+    if new:
+        bits = arguments['<bits>']
+        if not re.match('^\d+$', bits) or not int(bits):
+            print('<bits> must be a positive integer')
+        bits = int(bits)
 
-    numiters = None
-    if len(sys.argv) > 3:
-        numiters = sys.argv[3]
-        if not re.match('^\d+$', numiters) or not int(numiters):
-            print('NUMITERS must be a positive integer')
-        numiters = int(numiters)
+        iterations = arguments['<iterations>']
+        if not re.match('^\d+$', iterations) or not int(iterations):
+            print('<iterations> must be a positive integer')
+        iterations = int(iterations)
 
-    if workdir is None or (numbits is not None and numiters is None):
-        print(('Usage: \n' + 
-               '  {0} WORKDIR NUMBITS NUMITERS \n' + 
-               '  {0} WORKDIR').format(sys.argv[0]))
-        exit(1)
-
-    exitcode = main(workdir, numbits, numiters)
+    exitcode = main(workdir, (bits, iterations) if new else None)
     exit(exitcode)
 
 #2. Save and load to file at end of run and every 10 matches
