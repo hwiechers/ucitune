@@ -25,7 +25,7 @@ ARGS_FILENAME  = '_ucitune_args.txt'
 STATE_FILENAME = '_ucitune_state.txt'
 MATCHLOG_DIR = '_ucitune_matchlogs'
 
-GAMES_PER_MATCH = 2 #100
+GAMES_PER_MATCH = 100
 SAMPLE_VARIANCE = (0.5 ** 2) / GAMES_PER_MATCH #Assumed
 ASPIRATION_ELO = 2
 
